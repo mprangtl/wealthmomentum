@@ -1,95 +1,120 @@
-
 <!DOCTYPE html>
 <html lang="th">
   <head>
     <meta charset="UTF-8" />
-    <title>โปรแกรมคำนวณภาษี</title>
-    <link rel="stylesheet" href="./assets/style.css">
-    <script src="./assets/index.js"></script>
+    <title>คำนวณภาษีบุคคลธรรมดา</title>
+    <style>
+      body {
+        font-family: 'Kanit', sans-serif;
+        background: #f9fafb;
+        padding: 2rem;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      }
+      input[type="number"] {
+        width: 150px;
+        margin-bottom: 0.5rem;
+      }
+      .result {
+        margin-top: 2rem;
+        background: #f1f5f9;
+        padding: 1rem;
+        border-radius: 6px;
+      }
+      .advice {
+        margin-top: 1.5rem;
+        background: #fffbea;
+        border-left: 4px solid #facc15;
+        padding: 1rem;
+        border-radius: 6px;
+      }
+    </style>
   </head>
   <body>
     <div class="container">
       <h1>คำนวณภาษีบุคคลธรรมดา</h1>
-      <div>
-        <label>รายได้รวมทั้งปี: <input id="income" type="number" /></label><br/>
-        <label><input id="spouse" type="checkbox" /> คู่สมรสไม่มีรายได้</label><br/>
-        <label>จำนวนบุตร: <input id="children" type="number" /></label><br/>
-        <label>จำนวนพ่อแม่: <input id="parents" type="number" /></label><br/>
-        <label>ประกันสุขภาพ/ชีวิต: <input id="insurance" type="number" /></label><br/>
-        <label>ดอกเบี้ยบ้าน: <input id="loan" type="number" /></label><br/>
-        <label>ลงทุน RMF/SSF: <input id="invest" type="number" /></label><br/>
-        <label>เงินบริจาค: <input id="donate" type="number" /></label><br/>
-        <button onclick="calculateTax()">คำนวณภาษี</button>
-      </div>
+      <label>รายได้รวมทั้งปี: <input id="income" type="number" /></label><br />
+      <label><input id="spouse" type="checkbox" /> คู่สมรสไม่มีรายได้</label><br />
+      <label>จำนวนบุตร: <input id="children" type="number" /></label><br />
+      <label>จำนวนพ่อแม่: <input id="parents" type="number" /></label><br />
+      <label>ประกันสุขภาพ/ชีวิต: <input id="insurance" type="number" /></label><br />
+      <label>ดอกเบี้ยบ้าน: <input id="loan" type="number" /></label><br />
+      <label>ลงทุน RMF/SSF: <input id="invest" type="number" /></label><br />
+      <label>เงินบริจาค: <input id="donate" type="number" /></label><br />
+      <button onclick="calculateTax()">คำนวณภาษี</button>
+
       <div id="result" class="result"></div>
     </div>
+
+    <script>
+      function calculateTax() {
+        const income = +document.getElementById("income").value;
+        const spouse = document.getElementById("spouse").checked;
+        const children = +document.getElementById("children").value || 0;
+        const parents = +document.getElementById("parents").value || 0;
+        const insurance = +document.getElementById("insurance").value || 0;
+        const loan = +document.getElementById("loan").value || 0;
+        const invest = +document.getElementById("invest").value || 0;
+        const donate = +document.getElementById("donate").value || 0;
+
+        const personal = 60000;
+        const spouseDeduct = spouse ? 60000 : 0;
+        const childrenDeduct = children * 30000;
+        const parentDeduct = parents * 30000;
+        const expense = income * 0.5;
+
+        const totalDeduct = personal + spouseDeduct + childrenDeduct + parentDeduct + insurance + loan + invest + donate + expense;
+        const taxable = Math.max(income - totalDeduct, 0);
+
+        const brackets = [
+          { limit: 150000, rate: 0 },
+          { limit: 150000, rate: 0.05 },
+          { limit: 200000, rate: 0.1 },
+          { limit: 250000, rate: 0.15 },
+          { limit: 250000, rate: 0.2 },
+          { limit: 1000000, rate: 0.25 },
+          { limit: 2000000, rate: 0.3 },
+          { limit: Infinity, rate: 0.35 }
+        ];
+
+        let tax = 0;
+        let remain = taxable;
+        let breakdown = "";
+
+        for (let b of brackets) {
+          const amt = Math.min(b.limit, remain);
+          const t = amt * b.rate;
+          if (amt > 0) {
+            breakdown += `<div>ช่วง ${amt.toLocaleString()} บาท x ${(b.rate * 100).toFixed(0)}% = ${t.toLocaleString()} บาท</div>`;
+          }
+          tax += t;
+          remain -= amt;
+          if (remain <= 0) break;
+        }
+
+        const advice = [];
+        if (invest < 100000) advice.push("📈 คุณสามารถลงทุนใน RMF/SSF เพิ่มเติมเพื่อใช้สิทธิลดหย่อนภาษีได้สูงสุด 100,000 บาท");
+        if (donate < 100000) advice.push("❤️ การบริจาคเงินสามารถลดหย่อนภาษีได้ 2 เท่า (สูงสุด 100,000 บาท)");
+        if (!spouse) advice.push("👩‍❤️‍👨 หากมีคู่สมรสไม่มีรายได้ สามารถใช้สิทธิลดหย่อนอีก 60,000 บาท");
+        if (insurance < 100000) advice.push("🏥 เบี้ยประกันสุขภาพและชีวิตสามารถลดหย่อนได้สูงสุดรวมกัน 100,000 บาท");
+
+        const adviceHTML = advice.length > 0
+          ? `<h4>💡 คำแนะนำเพิ่มเติม</h4><ul>${advice.map(tip => `<li>${tip}</li>`).join("")}</ul>`
+          : "<p>🎉 คุณใช้สิทธิลดหย่อนได้อย่างเต็มที่แล้ว</p>";
+
+        document.getElementById("result").innerHTML = `
+          <h3>ผลการคำนวณ</h3>
+          <p>รายได้สุทธิ: <strong>${taxable.toLocaleString()}</strong> บาท</p>
+          <p>ภาษีที่ต้องจ่าย: <strong>${tax.toLocaleString()}</strong> บาท</p>
+          <div>${breakdown}</div>
+          <div class="advice">${adviceHTML}</div>
+        `;
+      }
+    </script>
   </body>
-</html>
-
-
-
-<script>
-function calculateTax() {
-  const income = +document.getElementById("income").value;
-  const spouse = document.getElementById("spouse").checked;
-  const children = +document.getElementById("children").value || 0;
-  const parents = +document.getElementById("parents").value || 0;
-  const insurance = +document.getElementById("insurance").value || 0;
-  const loan = +document.getElementById("loan").value || 0;
-  const invest = +document.getElementById("invest").value || 0;
-  const donate = +document.getElementById("donate").value || 0;
-
-  const personal = 60000;
-  const spouseDeduct = spouse ? 60000 : 0;
-  const childrenDeduct = children * 30000;
-  const parentDeduct = parents * 30000;
-  const expense = income * 0.5;
-
-  const totalDeduct = personal + spouseDeduct + childrenDeduct + parentDeduct + insurance + loan + invest + donate + expense;
-  const taxable = Math.max(income - totalDeduct, 0);
-
-  const brackets = [
-    { limit: 150000, rate: 0 },
-    { limit: 150000, rate: 0.05 },
-    { limit: 200000, rate: 0.1 },
-    { limit: 250000, rate: 0.15 },
-    { limit: 250000, rate: 0.2 },
-    { limit: 1000000, rate: 0.25 },
-    { limit: 2000000, rate: 0.3 },
-    { limit: Infinity, rate: 0.35 }
-  ];
-
-  let tax = 0;
-  let remain = taxable;
-  let breakdown = "";
-
-  for (let b of brackets) {
-    const amt = Math.min(b.limit, remain);
-    const t = amt * b.rate;
-    if (amt > 0) {
-      breakdown += `<div>ช่วง ${amt.toLocaleString()} บาท x ${(b.rate * 100).toFixed(0)}% = ${t.toLocaleString()} บาท</div>`;
-    }
-    tax += t;
-    remain -= amt;
-    if (remain <= 0) break;
-  }
-
-  const advice = [];
-  if (invest < 100000) advice.push("📈 คุณสามารถลงทุนใน RMF/SSF เพิ่มเติมเพื่อใช้สิทธิลดหย่อนภาษีได้สูงสุด 100,000 บาท");
-  if (donate < 100000) advice.push("❤️ การบริจาคเงินสามารถลดหย่อนภาษีได้ 2 เท่า (สูงสุด 100,000 บาท)");
-  if (!spouse) advice.push("👩‍❤️‍👨 หากมีคู่สมรสไม่มีรายได้ สามารถใช้สิทธิลดหย่อนอีก 60,000 บาท");
-  if (insurance < 100000) advice.push("🏥 เบี้ยประกันสุขภาพและชีวิตสามารถลดหย่อนได้สูงสุดรวมกัน 100,000 บาท");
-
-  const adviceHTML = advice.length > 0
-    ? `<h4>💡 คำแนะนำเพิ่มเติม</h4><ul>${advice.map(tip => `<li>${tip}</li>`).join("")}</ul>`
-    : "<p>🎉 คุณใช้สิทธิลดหย่อนได้อย่างเต็มที่แล้ว</p>";
-
-  document.getElementById("result").innerHTML = `
-    <h3>ผลการคำนวณ</h3>
-    <p>รายได้สุทธิ: <strong>${taxable.toLocaleString()}</strong> บาท</p>
-    <p>ภาษีที่ต้องจ่าย: <strong>${tax.toLocaleString()}</strong> บาท</p>
-    <div>${breakdown}</div>
-    <div class="advice">${adviceHTML}</div>
-  `;
-}
-</script>
