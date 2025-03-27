@@ -1,0 +1,27 @@
+
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <title>โปรแกรมคำนวณภาษี</title>
+    <link rel="stylesheet" href="./assets/style.css">
+    <script src="./assets/index.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>คำนวณภาษีบุคคลธรรมดา</h1>
+      <div>
+        <label>รายได้รวมทั้งปี: <input id="income" type="number" /></label><br/>
+        <label><input id="spouse" type="checkbox" /> คู่สมรสไม่มีรายได้</label><br/>
+        <label>จำนวนบุตร: <input id="children" type="number" /></label><br/>
+        <label>จำนวนพ่อแม่: <input id="parents" type="number" /></label><br/>
+        <label>ประกันสุขภาพ/ชีวิต: <input id="insurance" type="number" /></label><br/>
+        <label>ดอกเบี้ยบ้าน: <input id="loan" type="number" /></label><br/>
+        <label>ลงทุน RMF/SSF: <input id="invest" type="number" /></label><br/>
+        <label>เงินบริจาค: <input id="donate" type="number" /></label><br/>
+        <button onclick="calculateTax()">คำนวณภาษี</button>
+      </div>
+      <div id="result" class="result"></div>
+    </div>
+  </body>
+</html>
