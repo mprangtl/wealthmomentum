@@ -29,7 +29,7 @@
 
 
 <script>
-window.calculateTax = function () {
+function calculateTax() {
   const income = +document.getElementById("income").value;
   const spouse = document.getElementById("spouse").checked;
   const children = +document.getElementById("children").value || 0;
@@ -74,7 +74,6 @@ window.calculateTax = function () {
     if (remain <= 0) break;
   }
 
-  // คำแนะนำเพิ่มเติม
   const advice = [];
   if (invest < 100000) advice.push("📈 คุณสามารถลงทุนใน RMF/SSF เพิ่มเติมเพื่อใช้สิทธิลดหย่อนภาษีได้สูงสุด 100,000 บาท");
   if (donate < 100000) advice.push("❤️ การบริจาคเงินสามารถลดหย่อนภาษีได้ 2 เท่า (สูงสุด 100,000 บาท)");
