@@ -54,7 +54,7 @@
 
     <script>
       function calculateTax() {
-        const income = +document.getElementById("income").value;
+        const income = +document.getElementById("income").value || 0;
         const spouse = document.getElementById("spouse").checked;
         const children = +document.getElementById("children").value || 0;
         const parents = +document.getElementById("parents").value || 0;
@@ -118,3 +118,4 @@
       }
     </script>
   </body>
+</html>
