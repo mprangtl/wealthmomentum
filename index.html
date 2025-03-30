@@ -1,507 +1,492 @@
-import React, { useState } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-
-// Main application component
-export default function App() {
-  // State for form inputs with default values
-  const [form, setForm] = useState({
-    currentAge: 30,             // อายุ ปัจจุบัน (ปี)
-    retirementAge: 60,          // อายุที่ต้องการเกษียณ (ปี)
-    lifeExpectancy: 99,         // อายุขัย (ปี)
-    currentSavings: 500000,     // เงินเก็บที่มีอยู่แล้ว (บาท)
-    expectedReturnBefore: 5,    // ผลตอบแทนก่อนเกษียณ (%)
-    expectedReturnAfter: 2,     // ผลตอบแทนหลังเกษียณ (%)
-    inflationRate: 2,           // เงินเฟ้อ (%)
-    desiredMonthlySpending: 30000, // เงินที่อยากใช้หลังเกษียณต่อเดือน (มูลค่าปัจจุบัน, บาท)
-    desiredInheritance: 0,      // มรดกที่ต้องการให้คนข้างหลัง (บาท)
-  });
-
-  // State for calculation summary (null initially)
-  const [summary, setSummary] = useState(null);
-  // State for year-by-year cash flow projection (empty array initially)
-  const [cashFlow, setCashFlow] = useState([]);
-  // State for displaying validation errors
-  const [error, setError] = useState("");
-
-  /**
-   * Formats a number into a locale-specific string (Thai locale).
-   * @param {number | string | null | undefined} n - The number to format.
-   * @param {boolean} [noDecimal=false] - If true, rounds to the nearest whole number.
-   * @returns {string} The formatted number string.
-   */
-  const format = (n, noDecimal = false) => {
-    // Ensure n is a number before formatting
-    const num = Number(String(n).replace(/,/g, '')); // Remove existing commas and convert
-    if (n == null || isNaN(num)) return ""; // Handle null, undefined, NaN
-
-    try {
-      return noDecimal
-        ? Math.round(num).toLocaleString('th-TH') // Format as whole number (Thai locale)
-        : num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // Format with 2 decimals (Thai locale)
-    } catch(e) {
-      console.error("Formatting error:", e, "Input:", n);
-      return String(num); // Fallback
-    }
-  };
-
-  /**
-   * Handles changes in input fields.
-   * Removes commas and updates the form state if the value is numeric.
-   * @param {React.ChangeEvent<HTMLInputElement>} e - The input change event.
-   */
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    // Remove commas for numeric conversion
-    const clean = String(value).replace(/,/g, "");
-    // Allow only digits and an optional decimal point for rates/percentages
-    // Allow only digits for amounts, ages
-    const isRateField = ['expectedReturnBefore', 'expectedReturnAfter', 'inflationRate'].includes(name);
-    const isValidInput = isRateField
-      ? /^\d*\.?\d*$/.test(clean) // Allow decimals for rates
-      : /^\d*$/.test(clean);      // Allow only integers for others
-
-    if (isValidInput || clean === "") {
-      setForm((prev) => ({
-        ...prev,
-        // Store as number, or empty string if input is cleared
-        [name]: clean === "" ? "" : Number(clean)
-      }));
-       // Clear error when user starts typing valid input
-       if (error) setError("");
-    } else {
-        // Optionally provide feedback if input is invalid, though strict regex prevents it
-        console.warn(`Invalid input character detected for field ${name}: ${value}`);
-    }
-  };
-
-  /**
-   * Performs the retirement calculation.
-   * Uses binary search to find required monthly savings and simulates cash flow.
-   */
-  const calculate = () => {
-    setError(""); // Clear previous errors
-    setSummary(null); // Clear previous results
-    setCashFlow([]);
-
-    // --- Input Validation ---
-    const {
-      currentAge, retirementAge, lifeExpectancy, currentSavings,
-      expectedReturnBefore, expectedReturnAfter, inflationRate,
-      desiredMonthlySpending, desiredInheritance
-    } = form;
-
-    // Check if any required field is empty or non-numeric
-    for (const key in form) {
-        if (form[key] === "" || form[key] === null || isNaN(Number(form[key]))) {
-            setError(`กรุณากรอกข้อมูล '${inputFields.find(f => f.name === key)?.label || key}' ให้ครบถ้วนและถูกต้อง`);
-            return;
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เครื่องมือวางแผนเกษียณ</title>
+  
+  <!-- Google Fonts - Sarabun for Thai language -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- ใช้ CDN ของ Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- ใช้ Chart.js สำหรับการสร้างกราฟ -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Custom Tailwind Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Sarabun', 'sans-serif'],
+          },
         }
-    }
-
-    // Check logical age constraints
-    if (retirementAge <= currentAge) {
-        setError("อายุเกษียณต้องมากกว่าอายุปัจจุบัน");
-        return;
-    }
-    if (lifeExpectancy < retirementAge) {
-        setError("อายุขัยต้องไม่น้อยกว่าอายุเกษียณ");
-        return;
-    }
-     // Check for negative values
-     if (currentAge < 0 || retirementAge < 0 || lifeExpectancy < 0 || currentSavings < 0 || desiredMonthlySpending < 0 || desiredInheritance < 0) {
-         setError("กรุณากรอกข้อมูลเป็นค่าบวกเท่านั้น (ยกเว้นผลตอบแทนที่อาจติดลบได้)");
-         return;
-     }
-     // Check reasonable bounds
-     if (lifeExpectancy > 120) {
-         setError("อายุขัยดูเหมือนจะสูงเกินไป โปรดตรวจสอบ");
-         return;
-     }
-     if (expectedReturnBefore > 50 || expectedReturnAfter > 50 || inflationRate > 50) {
-        setError("อัตราผลตอบแทนหรือเงินเฟ้อดูเหมือนจะสูงเกินไป โปรดตรวจสอบ (%)");
-        return;
-     }
-
-
-    // --- Calculation Setup ---
-    const rBefore = expectedReturnBefore / 100;
-    const rAfter = expectedReturnAfter / 100;
-    const i = inflationRate / 100;
-    const annualSpendingToday = desiredMonthlySpending * 12;
-    const yearsToSave = retirementAge - currentAge;
-    const yearsRetired = lifeExpectancy - retirementAge + 1;
-    const spendingAtRetireStart = annualSpendingToday * Math.pow(1 + i, yearsToSave);
-
-    // --- (Optional) Calculate Present Value of Needs at Retirement ---
-    let presentValueSpending = 0;
-    for (let k = 0; k < yearsRetired; k++) {
-      const futureSpending = spendingAtRetireStart * Math.pow(1 + i, k);
-      presentValueSpending += futureSpending / Math.pow(1 + rAfter, k + 1);
-    }
-    const presentValueInheritance = desiredInheritance / Math.pow(1 + rAfter, yearsRetired);
-    const totalRequiredAtRetirementStart_Theoretical = presentValueSpending + presentValueInheritance;
-
-    // --- Binary Search to Find Required Monthly Savings ---
-    let low = 0;
-    let high = 5000000; // Increased upper bound slightly
-    let monthlySaving = 0;
-    let iterations = 0;
-    const MAX_ITERATIONS = 100;
-    const PRECISION = 0.01;
-
-    while (high - low > PRECISION && iterations < MAX_ITERATIONS) {
-      const mid = (low + high) / 2;
-      let tempSaving = currentSavings;
-
-      // Accumulation Phase
-      for (let year = 0; year < yearsToSave; year++) {
-        tempSaving += mid * 12;
-        tempSaving *= (1 + rBefore);
       }
-
-      // Decumulation Phase
-      let currentSpendingNeeds = spendingAtRetireStart;
-      for (let year = 0; year < yearsRetired; year++) {
-        tempSaving *= (1 + rAfter);
-        const spendingThisYear = currentSpendingNeeds * Math.pow(1 + i, year);
-        tempSaving -= spendingThisYear;
-      }
-
-      if (tempSaving >= desiredInheritance) {
-        monthlySaving = mid;
-        high = mid;
-      } else {
-        low = mid;
-      }
-      iterations++;
     }
-
-    if (iterations >= MAX_ITERATIONS) {
-        console.warn("Binary search reached max iterations. Result might be approximate.");
+  </script>
+  
+  <style>
+    body {
+      font-family: 'Sarabun', sans-serif;
+      background-color: #f3f4f6;
+      margin: 0;
+      padding: 0;
     }
-    monthlySaving = Math.round(high);
-
-    // --- Generate Detailed Cash Flow Array ---
-    let savings = currentSavings;
-    const flow = [];
-    let currentGregorianYear = new Date().getFullYear();
-    let currentSpending = spendingAtRetireStart;
-
-    // Initial state for chart baseline
-    flow.push({
-      year: currentGregorianYear + 543 - 1,
-      age: currentAge - 1,
-      contribute: 0, interest: 0, spending: 0,
-      savings: currentSavings, isRetired: false,
-    });
-
-    // Loop through each year
-    for (let age = currentAge; age <= lifeExpectancy; age++) {
-      const isRetired = age >= retirementAge;
-      let contribute = 0, spending = 0, interest = 0;
-      const beginningOfYearSavings = savings;
-
-      if (!isRetired) { // Accumulation
-        contribute = monthlySaving * 12;
-        savings += contribute;
-        interest = savings * rBefore;
-        savings += interest;
-      } else { // Decumulation
-        interest = beginningOfYearSavings * rAfter;
-        savings += interest;
-        spending = currentSpending * Math.pow(1 + i, age - retirementAge);
-        savings -= spending;
-      }
-
-      flow.push({
-        year: currentGregorianYear + 543, age: age,
-        contribute: contribute, interest: interest, spending: spending,
-        savings: savings, isRetired: isRetired,
-      });
-      currentGregorianYear++;
-    }
-
-    // --- Update State with Results ---
-    const finalSavings = flow[flow.length - 1]?.savings ?? 0;
-    setSummary({
-      totalEndOfLife: finalSavings,
-      neededAtRetirement_Theoretical: totalRequiredAtRetirementStart_Theoretical,
-      monthlySaving: monthlySaving,
-      yearlySaving: monthlySaving * 12,
-    });
-    setCashFlow(flow);
-  };
-
-  // --- Input Field Definitions ---
-  const inputFields = [
-    { label: "อายุ ปัจจุบัน (ปี)", name: "currentAge", color: "bg-green-100", type: "number" },
-    { label: "อายุที่ต้องการเกษียณ (ปี)", name: "retirementAge", color: "bg-green-100", type: "number" },
-    { label: "อายุขัย (ปี)", name: "lifeExpectancy", color: "bg-green-100", type: "number" },
-    {
-      label: "เงินที่อยากใช้หลังเกษียณต่อเดือน (มูลค่าปัจจุบัน)",
-      name: "desiredMonthlySpending",
-      color: "bg-blue-100",
-      note: "หากวันนี้คุณเกษียณ อยากจะมีเงินใช้เดือนละเท่าไหร่",
-      type: "number"
-    },
-    {
-      label: "มรดกที่ต้องการให้คนข้างหลัง (บาท)",
-      name: "desiredInheritance",
-      color: "bg-blue-100",
-      type: "number"
-    },
-    {
-      label: "เงินเก็บที่มีอยู่แล้ว (เฉพาะส่วนที่ตั้งใจไว้เพื่อเกษียณ)",
-      name: "currentSavings",
-      color: "bg-green-300",
-      type: "number"
-    },
-    { label: "ผลตอบแทนก่อนเกษียณ (%)", name: "expectedReturnBefore", color: "bg-yellow-100", type: "decimal" },
-    { label: "ผลตอบแทนหลังเกษียณ (%)", name: "expectedReturnAfter", color: "bg-yellow-100", type: "decimal" },
-    { label: "เงินเฟ้อ (%)", name: "inflationRate", color: "bg-yellow-100", type: "decimal" },
-  ];
-
-  // --- JSX Rendering ---
-  return (
-    // Adjusted max-width for better tablet view, increased padding
-    <div className="max-w-5xl mx-auto py-10 px-6 font-sans">
-      {/* Titles */}
-      <h1 className="text-3xl md:text-4xl font-extrabold text-center text-[#005f56] mb-5">เครื่องมือวางแผนเกษียณ</h1>
-      <p className="text-center text-gray-600 mb-10 text-base md:text-lg">ประเมินเงินออมของคุณเพื่อวัยเกษียณอย่างละเอียด</p>
-
-      {/* Input Form Section */}
-      <div className="bg-white border p-6 md:p-8 rounded-lg shadow-md mb-10"> {/* Increased padding */}
-        <h2 className="text-xl md:text-2xl font-semibold text-[#00928b] mb-6">ข้อมูลของคุณ</h2>
-        {/* Grid layout for input fields - Adjusted gap for tablets */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6"> {/* Increased gap */}
-          {/* Map through inputFields array to render each input group */}
-          {inputFields.map(({ label, name, color, note, type }) => (
-            <div key={name} className={`${color} p-4 rounded border border-gray-200 flex flex-col justify-between`}> {/* Increased padding */}
-              <div>
-                <label htmlFor={name} className="block text-sm md:text-base font-medium mb-1.5 text-gray-700"> {/* Slightly larger label */}
-                  {label}
-                </label>
-                {/* Optional note for clarification */}
-                {note && <div className="text-xs md:text-sm text-gray-500 italic mt-1 mb-2">{note}</div>} {/* Slightly larger note */}
-              </div>
-              <input
-                id={name}
-                type="text" // Use text to allow formatting with commas visually
-                inputMode={type === 'decimal' ? 'decimal' : 'numeric'} // Hint for mobile keyboards
-                placeholder="กรอกตัวเลข"
-                name={name}
-                // Display formatted value, handle empty string case
-                value={form[name] === "" ? "" : format(form[name], type !== 'decimal')} // Format based on type (decimal or integer)
-                onChange={handleChange} // Use the combined handler
-                // Slightly larger text size for inputs
-                className="w-full border border-gray-300 rounded px-3 py-2 mt-1 text-right text-lg md:text-xl focus:outline-none focus:ring-2 focus:ring-[#00928b] focus:border-transparent"
-              />
-            </div>
-          ))}
-        </div>
-
-        {/* Error Message Display */}
-        {error && (
-            <div className="mt-5 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-center text-sm md:text-base">
-                {error}
-            </div>
-        )}
-
-        {/* Calculate Button */}
-        <button
-          onClick={calculate}
-          // Increased padding and text size for better touch target
-          className="mt-8 w-full bg-[#005f56] text-white py-3.5 px-5 rounded-lg hover:bg-[#004843] transition duration-200 text-lg md:text-xl font-semibold shadow hover:shadow-md"
-        >
-          คำนวณแผนเกษียณ
-        </button>
+  </style>
+</head>
+<body>
+  <div id="app" class="max-w-5xl mx-auto py-10 px-6 font-sans">
+    <h1 class="text-3xl md:text-4xl font-extrabold text-center text-[#005f56] mb-5">เครื่องมือวางแผนเกษียณ</h1>
+    <p class="text-center text-gray-600 mb-10 text-base md:text-lg">ประเมินเงินออมของคุณเพื่อวัยเกษียณอย่างละเอียด</p>
+    
+    <!-- Input Form Section -->
+    <div class="bg-white border p-6 md:p-8 rounded-lg shadow-md mb-10">
+      <h2 class="text-xl md:text-2xl font-semibold text-[#00928b] mb-6">ข้อมูลของคุณ</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="input-fields">
+        <!-- Input fields will be generated here by JavaScript -->
       </div>
-
-      {/* --- Results Display Section (Conditional Rendering) --- */}
-      {summary && !error && (
-        <> {/* React Fragment to group multiple elements */}
-          {/* Summary Box */}
-          <div className="mb-10 p-6 md:p-8 rounded-lg text-white shadow-lg" style={{ background: 'linear-gradient(to right, #002b5c, #005f56)' }}> {/* Increased padding */}
-            <h2 className="text-xl md:text-2xl font-bold mb-5 text-center">สรุปผลการคำนวณ</h2>
-             {/* Display savings needed at the START of retirement */}
-             {(() => {
-                 const savingsAtRetirementStart = cashFlow.find(r => r.age === form.retirementAge - 1)?.savings ?? 0;
-                 return (
-                    <>
-                        <p className="text-center text-gray-200 mb-1 text-sm md:text-base">ณ วันที่เริ่มเกษียณ (อายุ {form.retirementAge}) คุณควรมีเงินสะสม</p>
-                        <div className="text-4xl md:text-5xl font-extrabold text-[#ffe066] mb-4 text-center"> {/* Adjusted size */}
-                            ฿{format(savingsAtRetirementStart, true)}
-                        </div>
-                    </>
-                 );
-             })()}
-            <p className="text-lg md:text-xl text-center"> {/* Slightly larger text */}
-              เพื่อให้บรรลุเป้าหมาย คุณควรออมเพิ่มเดือนละ <span className="text-[#00d2c6] font-semibold text-xl md:text-2xl">฿{format(summary.monthlySaving, true)}</span>
-              <span className="text-sm md:text-base text-gray-300 block md:inline"> (หรือปีละ {format(summary.yearlySaving, true)} บาท)</span> {/* Responsive display */}
-            </p>
-             {/* Add a note about the final balance vs inheritance */}
-             <p className="text-xs md:text-sm text-center mt-4 text-gray-300 italic"> {/* Slightly larger text */}
-                 ยอดเงิน ณ สิ้นปีอายุขัย ({form.lifeExpectancy}) คือ ฿{format(summary.totalEndOfLife, true)}.
-                 เป้าหมายมรดกคือ ฿{format(form.desiredInheritance, true)}.
-                 {summary.totalEndOfLife >= form.desiredInheritance
-                    ? " (บรรลุเป้าหมายมรดก)"
-                    : " (ไม่บรรลุเป้าหมายมรดก กรุณาปรับแผน)"
-                 }
-             </p>
-          </div>
-
-          {/* Summary Table */}
-           <div className="mb-10 p-6 md:p-8 rounded-lg shadow-lg" style={{ background: '#00A7A4' }}> {/* Increased padding */}
-             <h2 className="text-xl md:text-2xl font-bold mb-5 text-white">สรุปภาพรวมแผนเกษียณ</h2>
-             <div className="overflow-x-auto"> {/* Make table horizontally scrollable on small screens */}
-               <table className="w-full text-sm md:text-base text-left text-white"> {/* Slightly larger base text */}
-                 <thead className="bg-white/20"> {/* Slightly transparent header */}
-                   <tr className="font-semibold">
-                     <th className="py-2.5 px-4">หัวข้อ</th> {/* Increased padding */}
-                     <th className="py-2.5 px-4 text-center">ช่วงออม<br/>(อายุ {form.currentAge} - {form.retirementAge -1})</th>
-                     <th className="py-2.5 px-4 text-center">ช่วงใช้เงิน<br/>(อายุ {form.retirementAge} - {form.lifeExpectancy})</th>
-                     <th className="py-2.5 px-4 text-center">ณ สิ้นสุดแผน<br/>(อายุ {form.lifeExpectancy})</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {(() => {
-                       const i = form.inflationRate / 100;
-                       const savingsAtRetirementStart = cashFlow.find(r => r.age === form.retirementAge - 1)?.savings ?? 0;
-                       const annualSpendingAtRetirement = form.desiredMonthlySpending * 12 * Math.pow(1 + i, form.retirementAge - form.currentAge);
-                       const monthlySpendingAtRetirement = annualSpendingAtRetirement / 12;
-                       const annualSpendingAtEnd = form.desiredMonthlySpending * 12 * Math.pow(1 + i, form.lifeExpectancy - form.currentAge);
-                       const monthlySpendingAtEnd = annualSpendingAtEnd / 12;
-
-                       return (
-                           <>
-                               <tr className="border-t border-white/30">
-                                   <td className="py-2.5 px-4">จำนวนปี</td>
-                                   <td className="py-2.5 px-4 text-center">{form.retirementAge - form.currentAge} ปี</td>
-                                   <td className="py-2.5 px-4 text-center">{form.lifeExpectancy - form.retirementAge + 1} ปี</td>
-                                   <td className="py-2.5 px-4 text-center">–</td>
-                               </tr>
-                               <tr className="border-t border-white/30">
-                                   <td className="py-2.5 px-4">เงินเก็บ (ณ สิ้นช่วงเวลา)</td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(savingsAtRetirementStart, true)}<br/><small>(ณ สิ้นปีอายุ {form.retirementAge - 1})</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(summary.totalEndOfLife, true)}<br/><small>(ณ สิ้นปีอายุ {form.lifeExpectancy})</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(form.desiredInheritance, true)}<br/><small>(เป้าหมายมรดก)</small></td>
-                               </tr>
-                               <tr className="border-t border-white/30">
-                                   <td className="py-2.5 px-4">ค่าใช้จ่ายต่อปี<br/><small>(มูลค่า ณ ปีแรกของช่วง)</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(form.desiredMonthlySpending * 12)}<br/><small>(มูลค่าปัจจุบัน)</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(annualSpendingAtRetirement, true)}<br/><small>(ณ ปีอายุ {form.retirementAge})</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(annualSpendingAtEnd, true)}<br/><small>(ณ ปีอายุ {form.lifeExpectancy})</small></td>
-                               </tr>
-                               <tr className="border-t border-white/30">
-                                   <td className="py-2.5 px-4">ค่าใช้จ่ายรายเดือน<br/><small>(มูลค่า ณ ปีแรกของช่วง)</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(form.desiredMonthlySpending)}<br/><small>(มูลค่าปัจจุบัน)</small></td>
-                                   <td className="py-2.5 px-4 text-center">฿{format(monthlySpendingAtRetirement, true)}<br/><small>(ณ ปีอายุ {form.retirementAge})</small></td>
-                                    <td className="py-2.5 px-4 text-center">฿{format(monthlySpendingAtEnd, true)}<br/><small>(ณ ปีอายุ {form.lifeExpectancy})</small></td>
-                               </tr>
-                               <tr className="border-t border-white/30">
-                                   <td className="py-2.5 px-4">ผลตอบแทนเฉลี่ยคาดการณ์</td>
-                                   <td className="py-2.5 px-4 text-center">{form.expectedReturnBefore}%</td>
-                                   <td className="py-2.5 px-4 text-center">{form.expectedReturnAfter}%</td>
-                                   <td className="py-2.5 px-4 text-center">–</td>
-                               </tr>
-                           </>
-                       );
-                   })()}
-                 </tbody>
-               </table>
-             </div>
-           </div>
-
-          {/* Savings Chart */}
-          <div className="mb-10 p-6 md:p-8 rounded-lg bg-[#e0f2f7] shadow-lg"> {/* Increased padding */}
-            <h2 className="text-xl md:text-2xl font-bold mb-5 text-[#005f56]">กราฟแสดงยอดเงินสะสมแต่ละปี (ณ สิ้นปี)</h2>
-            {/* Responsive container for the chart */}
-            <ResponsiveContainer width="100%" height={400}> {/* Increased height for better view */}
-              <BarChart data={cashFlow.filter(r => r.age >= form.currentAge -1 )} margin={{ top: 10, right: 10, left: 35, bottom: 10 }}> {/* Adjusted margin */}
-                <XAxis dataKey="age" tick={{ fontSize: 11 }} label={{ value: 'อายุ (ปี)', position: 'insideBottom', offset: -8, fontSize: 12, fill: '#666' }} />
-                <YAxis
-                    tickFormatter={(value) => `${format(value / 1000000, true)}M`} // Format Y-axis ticks in Millions
-                    tick={{ fontSize: 11 }}
-                    width={90} // Increased width slightly for Y-axis labels
-                    label={{ value: 'เงินสะสม (ล้านบาท)', angle: -90, position: 'insideLeft', offset: -25, fontSize: 12, fill: '#666' }}
-                 />
-                 {/* Custom Tooltip */}
-                 <Tooltip
-                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #ccc', borderRadius: '5px', fontSize: '13px', padding: '8px' }} // Slightly larger tooltip
-                    labelStyle={{ fontWeight: 'bold', color: '#005f56', marginBottom: '4px', display: 'block' }}
-                    formatter={(value, name, props) => {
-                        const { payload } = props; // Access the full data point
-                        return [
-                            `฿${format(value, true)}`, // Formatted savings value
-                            `ยอดเงินสะสม (สิ้นปี อายุ ${payload.age})` // Custom name/label
-                        ];
-                    }}
-                    labelFormatter={(label) => `อายุ: ${label}`} // Format the label (age)
-                 />
-                <Bar dataKey="savings" fill="#00928b" name="ยอดเงินสะสม (สิ้นปี)" radius={[4, 4, 0, 0]} /> {/* Rounded top corners */}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Cash Flow Table */}
-          <div className="p-6 md:p-8 rounded-lg bg-[#e0f2f7] shadow-lg"> {/* Increased padding */}
-            <h2 className="text-xl md:text-2xl font-bold mb-5 text-[#005f56]">ตารางกระแสเงินสดรายปี</h2>
-            {/* Container to allow table scrolling */}
-            <div className="overflow-auto max-h-[600px] border border-gray-300 rounded"> {/* Increased max height, rounded border */}
-              <table className="w-full border-collapse text-sm md:text-base"> {/* Slightly larger base text */}
-                <thead className="bg-[#b2e0da] sticky top-0 z-10 shadow-sm"> {/* Sticky header with shadow */}
-                  <tr>
-                    <th className="border px-4 py-2.5 text-center">ปี พ.ศ.</th> {/* Increased padding */}
-                    <th className="border px-4 py-2.5 text-center">อายุ</th>
-                    <th className="border px-4 py-2.5 text-right">เงินออมเพิ่ม<br/>(ทั้งปี)</th>
-                    <th className="border px-4 py-2.5 text-right">ผลตอบแทน<br/>(ดอกเบี้ย/กำไร)</th>
-                    <th className="border px-4 py-2.5 text-right">เงินที่ใช้จ่าย<br/>(ทั้งปี)</th>
-                    <th className="border px-4 py-2.5 text-right">ยอดเงินสะสม<br/>(ณ สิ้นปี)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Map through cashFlow data to create table rows */}
-                  {cashFlow.filter(row => row.age >= form.currentAge).map((row, idx) => (
-                    <tr key={idx} className={`${row.isRetired ? "bg-yellow-50" : "bg-white"} hover:bg-gray-100 transition-colors duration-150`}> {/* Hover effect */}
-                      <td className="border px-4 py-2 text-center">{row.year}</td>
-                      <td className="border px-4 py-2 text-center">{row.age}</td>
-                      <td className="border px-4 py-2 text-right text-green-700">{row.contribute > 0 ? `+${format(row.contribute, true)}` : '–'}</td>
-                      <td className="border px-4 py-2 text-right text-blue-700">{row.interest !== 0 ? format(row.interest, true) : '–'}</td>
-                      <td className="border px-4 py-2 text-right text-orange-700">{row.spending > 0 ? `-${format(row.spending, true)}` : '–'}</td>
-                      {/* Highlight negative savings */}
-                      <td className={`border px-4 py-2 text-right font-semibold ${row.savings < 0 ? 'text-red-600' : 'text-black'}`}>
-                        {format(row.savings, true)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* Explanatory notes below the table */}
-            <p className="text-xs md:text-sm text-gray-600 mt-5 italic leading-relaxed"> {/* Slightly larger text */}
-              * หมายเหตุ: ตารางแสดงยอดเงินสะสม ณ <span className="underline font-semibold">สิ้นปีปฏิทิน</span> ของแต่ละช่วงอายุ.<br />
-              * การคำนวณสมมุติว่า: ออมเงิน/ลงทุน <span className="underline">ต้นปี</span>, ได้รับผลตอบแทน <span className="underline">สิ้นปี</span>, และใช้จ่ายเงิน <span className="underline">สิ้นปี</span>.<br/>
-              * หากยอดเงินสะสม ณ สิ้นปีอายุขัย ({form.lifeExpectancy}) <span className={summary.totalEndOfLife >= form.desiredInheritance ? 'text-green-700 font-semibold' : 'text-red-600 font-semibold'}>
-                {summary.totalEndOfLife >= form.desiredInheritance ? `มากกว่าหรือเท่ากับ` : `น้อยกว่า`} ฿{format(form.desiredInheritance, true)}
-              </span>,
-              {summary.totalEndOfLife >= form.desiredInheritance
-                ? " แสดงว่าบรรลุเป้าหมายมรดกที่ตั้งไว้."
-                : " แสดงว่าเงินอาจไม่พอสำหรับเป้าหมายมรดก หรืออาจหมดก่อนอายุขัย."
-              }
-              <br/>
-              * ระบบนี้คำนวณโดยสมมุติว่า <span className="underline">มีชีวิตอยู่จนถึงสิ้นปีของอายุ {form.lifeExpectancy}</span>.
-            </p>
-          </div>
-        </>
-      )}
+      
+      <!-- Error Message Display -->
+      <div id="error-message" class="mt-5 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-center text-sm md:text-base hidden"></div>
+      
+      <!-- Calculate Button -->
+      <button
+        id="calculate-button"
+        class="mt-8 w-full bg-[#005f56] text-white py-3.5 px-5 rounded-lg hover:bg-[#004843] transition duration-200 text-lg md:text-xl font-semibold shadow hover:shadow-md"
+      >
+        คำนวณแผนเกษียณ
+      </button>
     </div>
-  );
-}
+    
+    <!-- Results Section (Hidden initially) -->
+    <div id="results-section" class="hidden">
+      <!-- Summary Box -->
+      <div id="result-summary" class="mb-10 p-6 md:p-8 rounded-lg text-white shadow-lg" style="background: linear-gradient(to right, #002b5c, #005f56)">
+        <!-- Will be populated by JavaScript -->
+      </div>
+      
+      <!-- Summary Table -->
+      <div id="summary-table" class="mb-10 p-6 md:p-8 rounded-lg shadow-lg" style="background: #00A7A4">
+        <!-- Will be populated by JavaScript -->
+      </div>
+      
+      <!-- Savings Chart -->
+      <div class="mb-10 p-6 md:p-8 rounded-lg bg-[#e0f2f7] shadow-lg">
+        <h2 class="text-xl md:text-2xl font-bold mb-5 text-[#005f56]">กราฟแสดงยอดเงินสะสมแต่ละปี (ณ สิ้นปี)</h2>
+        <div style="width: 100%; height: 400px; position: relative;">
+          <canvas id="savingsChart"></canvas>
+        </div>
+      </div>
+      
+      <!-- Cash Flow Table -->
+      <div class="p-6 md:p-8 rounded-lg bg-[#e0f2f7] shadow-lg">
+        <h2 class="text-xl md:text-2xl font-bold mb-5 text-[#005f56]">ตารางกระแสเงินสดรายปี</h2>
+        <div id="cash-flow-table" class="overflow-auto max-h-[600px] border border-gray-300 rounded">
+          <!-- Will be populated by JavaScript -->
+        </div>
+        <p id="cash-flow-notes" class="text-xs md:text-sm text-gray-600 mt-5 italic leading-relaxed">
+          <!-- Will be populated by JavaScript -->
+        </p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Main JavaScript -->
+  <script>
+    // Input field definitions
+    const inputFields = [
+      { label: "อายุ ปัจจุบัน (ปี)", name: "currentAge", color: "bg-green-100", type: "number", default: 30 },
+      { label: "อายุที่ต้องการเกษียณ (ปี)", name: "retirementAge", color: "bg-green-100", type: "number", default: 60 },
+      { label: "อายุขัย (ปี)", name: "lifeExpectancy", color: "bg-green-100", type: "number", default: 99 },
+      {
+        label: "เงินที่อยากใช้หลังเกษียณต่อเดือน (มูลค่าปัจจุบัน)",
+        name: "desiredMonthlySpending",
+        color: "bg-blue-100",
+        note: "หากวันนี้คุณเกษียณ อยากจะมีเงินใช้เดือนละเท่าไหร่",
+        type: "number",
+        default: 30000
+      },
+      {
+        label: "มรดกที่ต้องการให้คนข้างหลัง (บาท)",
+        name: "desiredInheritance",
+        color: "bg-blue-100",
+        type: "number",
+        default: 0
+      },
+      {
+        label: "เงินเก็บที่มีอยู่แล้ว (เฉพาะส่วนที่ตั้งใจไว้เพื่อเกษียณ)",
+        name: "currentSavings",
+        color: "bg-green-300",
+        type: "number",
+        default: 500000
+      },
+      { label: "ผลตอบแทนก่อนเกษียณ (%)", name: "expectedReturnBefore", color: "bg-yellow-100", type: "decimal", default: 5 },
+      { label: "ผลตอบแทนหลังเกษียณ (%)", name: "expectedReturnAfter", color: "bg-yellow-100", type: "decimal", default: 2 },
+      { label: "เงินเฟ้อ (%)", name: "inflationRate", color: "bg-yellow-100", type: "decimal", default: 2 },
+    ];
+    
+    // Current form data
+    let formData = {};
+    
+    // Results
+    let summary = null;
+    let cashFlow = [];
+    
+    // Format number function
+    function format(n, noDecimal = false) {
+      // Ensure n is a number before formatting
+      const num = Number(String(n).replace(/,/g, '')); // Remove existing commas and convert
+      if (n == null || isNaN(num)) return ""; // Handle null, undefined, NaN
 
+      try {
+        return noDecimal
+          ? Math.round(num).toLocaleString('th-TH') // Format as whole number (Thai locale)
+          : num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // Format with 2 decimals (Thai locale)
+      } catch(e) {
+        console.error("Formatting error:", e, "Input:", n);
+        return String(num); // Fallback
+      }
+    }
+    
+    // Generate input fields
+    function generateInputFields() {
+      const container = document.getElementById('input-fields');
+      
+      inputFields.forEach(field => {
+        // Initialize form data with default values
+        formData[field.name] = field.default;
+        
+        const fieldDiv = document.createElement('div');
+        fieldDiv.className = `${field.color} p-4 rounded border border-gray-200 flex flex-col justify-between`;
+        
+        const labelDiv = document.createElement('div');
+        const label = document.createElement('label');
+        label.htmlFor = field.name;
+        label.className = 'block text-sm md:text-base font-medium mb-1.5 text-gray-700';
+        label.textContent = field.label;
+        labelDiv.appendChild(label);
+        
+        if (field.note) {
+          const noteDiv = document.createElement('div');
+          noteDiv.className = 'text-xs md:text-sm text-gray-500 italic mt-1 mb-2';
+          noteDiv.textContent = field.note;
+          labelDiv.appendChild(noteDiv);
+        }
+        
+        const input = document.createElement('input');
+        input.id = field.name;
+        input.type = 'text';
+        input.inputMode = field.type === 'decimal' ? 'decimal' : 'numeric';
+        input.placeholder = 'กรอกตัวเลข';
+        input.name = field.name;
+        input.value = format(field.default, field.type !== 'decimal');
+        input.className = 'w-full border border-gray-300 rounded px-3 py-2 mt-1 text-right text-lg md:text-xl focus:outline-none focus:ring-2 focus:ring-[#00928b] focus:border-transparent';
+        
+        input.addEventListener('input', function(e) {
+          const { name, value } = e.target;
+          // Remove commas for numeric conversion
+          const clean = String(value).replace(/,/g, "");
+          // Allow only digits and an optional decimal point for rates/percentages
+          const isRateField = ['expectedReturnBefore', 'expectedReturnAfter', 'inflationRate'].includes(name);
+          const isValidInput = isRateField
+            ? /^\d*\.?\d*$/.test(clean) // Allow decimals for rates
+            : /^\d*$/.test(clean);      // Allow only integers for others
+
+          if (isValidInput || clean === "") {
+            // Store as number, or empty string if input is cleared
+            formData[name] = clean === "" ? "" : Number(clean);
+            // Format the display value
+            e.target.value = clean === "" ? "" : format(Number(clean), field.type !== 'decimal');
+            // Clear error when user starts typing valid input
+            document.getElementById('error-message').classList.add('hidden');
+          }
+        });
+        
+        fieldDiv.appendChild(labelDiv);
+        fieldDiv.appendChild(input);
+        container.appendChild(fieldDiv);
+      });
+    }
+    
+    // Validate inputs
+    function validateInputs() {
+      const errorElement = document.getElementById('error-message');
+      errorElement.classList.add('hidden');
+      
+      // Check if any required field is empty or non-numeric
+      for (const key in formData) {
+        if (formData[key] === "" || formData[key] === null || isNaN(Number(formData[key]))) {
+          errorElement.textContent = `กรุณากรอกข้อมูลให้ครบถ้วนและถูกต้อง`;
+          errorElement.classList.remove('hidden');
+          return false;
+        }
+      }
+      
+      // Check logical age constraints
+      const { currentAge, retirementAge, lifeExpectancy } = formData;
+      if (retirementAge <= currentAge) {
+        errorElement.textContent = "อายุเกษียณต้องมากกว่าอายุปัจจุบัน";
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      if (lifeExpectancy < retirementAge) {
+        errorElement.textContent = "อายุขัยต้องไม่น้อยกว่าอายุเกษียณ";
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      // Check for negative values
+      if (currentAge < 0 || retirementAge < 0 || lifeExpectancy < 0 || 
+          formData.currentSavings < 0 || formData.desiredMonthlySpending < 0 || formData.desiredInheritance < 0) {
+        errorElement.textContent = "กรุณากรอกข้อมูลเป็นค่าบวกเท่านั้น (ยกเว้นผลตอบแทนที่อาจติดลบได้)";
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      // Check reasonable bounds
+      if (lifeExpectancy > 120) {
+        errorElement.textContent = "อายุขัยดูเหมือนจะสูงเกินไป โปรดตรวจสอบ";
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      if (formData.expectedReturnBefore > 50 || formData.expectedReturnAfter > 50 || formData.inflationRate > 50) {
+        errorElement.textContent = "อัตราผลตอบแทนหรือเงินเฟ้อดูเหมือนจะสูงเกินไป โปรดตรวจสอบ (%)";
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      return true;
+    }
+    
+    // Calculate retirement plan
+    function calculateRetirement() {
+      const {
+        currentAge, retirementAge, lifeExpectancy, currentSavings,
+        expectedReturnBefore, expectedReturnAfter, inflationRate,
+        desiredMonthlySpending, desiredInheritance
+      } = formData;
+      
+      // การคำนวณ
+      const rBefore = expectedReturnBefore / 100;
+      const rAfter = expectedReturnAfter / 100;
+      const i = inflationRate / 100;
+      const annualSpendingToday = desiredMonthlySpending * 12;
+      const yearsToSave = retirementAge - currentAge;
+      const yearsRetired = lifeExpectancy - retirementAge + 1;
+      const spendingAtRetireStart = annualSpendingToday * Math.pow(1 + i, yearsToSave);
+      
+      // Calculate Present Value of Needs at Retirement
+      let presentValueSpending = 0;
+      for (let k = 0; k < yearsRetired; k++) {
+        const futureSpending = spendingAtRetireStart * Math.pow(1 + i, k);
+        presentValueSpending += futureSpending / Math.pow(1 + rAfter, k + 1);
+      }
+      const presentValueInheritance = desiredInheritance / Math.pow(1 + rAfter, yearsRetired);
+      const totalRequiredAtRetirementStart_Theoretical = presentValueSpending + presentValueInheritance;
+      
+      // Binary Search to Find Required Monthly Savings
+      let low = 0;
+      let high = 5000000; // Upper bound
+      let monthlySaving = 0;
+      let iterations = 0;
+      const MAX_ITERATIONS = 100;
+      const PRECISION = 0.01;
+      
+      while (high - low > PRECISION && iterations < MAX_ITERATIONS) {
+        const mid = (low + high) / 2;
+        let tempSaving = currentSavings;
+        
+        // Accumulation Phase
+        for (let year = 0; year < yearsToSave; year++) {
+          tempSaving += mid * 12;
+          tempSaving *= (1 + rBefore);
+        }
+        
+        // Decumulation Phase
+        let currentSpendingNeeds = spendingAtRetireStart;
+        for (let year = 0; year < yearsRetired; year++) {
+          tempSaving *= (1 + rAfter);
+          const spendingThisYear = currentSpendingNeeds * Math.pow(1 + i, year);
+          tempSaving -= spendingThisYear;
+        }
+        
+        if (tempSaving >= desiredInheritance) {
+          monthlySaving = mid;
+          high = mid;
+        } else {
+          low = mid;
+        }
+        iterations++;
+      }
+      
+      monthlySaving = Math.round(high);
+      
+      // Generate Cash Flow Array
+      let savings = currentSavings;
+      const flow = [];
+      let currentGregorianYear = new Date().getFullYear();
+      let currentSpending = spendingAtRetireStart;
+      
+      // Initial state
+      flow.push({
+        year: currentGregorianYear + 543 - 1,
+        age: currentAge - 1,
+        contribute: 0, interest: 0, spending: 0,
+        savings: currentSavings, isRetired: false,
+      });
+      
+      // Loop through each year
+      for (let age = currentAge; age <= lifeExpectancy; age++) {
+        const isRetired = age >= retirementAge;
+        let contribute = 0, spending = 0, interest = 0;
+        const beginningOfYearSavings = savings;
+        
+        if (!isRetired) { // Accumulation
+          contribute = monthlySaving * 12;
+          savings += contribute;
+          interest = savings * rBefore;
+          savings += interest;
+        } else { // Decumulation
+          interest = beginningOfYearSavings * rAfter;
+          savings += interest;
+          spending = currentSpending * Math.pow(1 + i, age - retirementAge);
+          savings -= spending;
+        }
+        
+        flow.push({
+          year: currentGregorianYear + 543, age: age,
+          contribute: contribute, interest: interest, spending: spending,
+          savings: savings, isRetired: isRetired,
+        });
+        currentGregorianYear++;
+      }
+      
+      // Create Summary
+      const finalSavings = flow[flow.length - 1]?.savings ?? 0;
+      summary = {
+        totalEndOfLife: finalSavings,
+        neededAtRetirement_Theoretical: totalRequiredAtRetirementStart_Theoretical,
+        monthlySaving: monthlySaving,
+        yearlySaving: monthlySaving * 12,
+      };
+      
+      cashFlow = flow;
+    }
+    
+    // Generate results HTML
+    function displayResults() {
+      document.getElementById('results-section').classList.remove('hidden');
+      
+      // Display Summary
+      const summaryElement = document.getElementById('result-summary');
+      const savingsAtRetirementStart = cashFlow.find(r => r.age === formData.retirementAge - 1)?.savings ?? 0;
+      
+      summaryElement.innerHTML = `
+        <h2 class="text-xl md:text-2xl font-bold mb-5 text-center">สรุปผลการคำนวณ</h2>
+        <p class="text-center text-gray-200 mb-1 text-sm md:text-base">ณ วันที่เริ่มเกษียณ (อายุ ${formData.retirementAge}) คุณควรมีเงินสะสม</p>
+        <div class="text-4xl md:text-5xl font-extrabold text-[#ffe066] mb-4 text-center">
+          ฿${format(savingsAtRetirementStart, true)}
+        </div>
+        <p class="text-lg md:text-xl text-center">
+          เพื่อให้บรรลุเป้าหมาย คุณควรออมเพิ่มเดือนละ <span class="text-[#00d2c6] font-semibold text-xl md:text-2xl">฿${format(summary.monthlySaving, true)}</span>
+          <span class="text-sm md:text-base text-gray-300 block md:inline"> (หรือปีละ ${format(summary.yearlySaving, true)} บาท)</span>
+        </p>
+        <p class="text-xs md:text-sm text-center mt-4 text-gray-300 italic">
+          ยอดเงิน ณ สิ้นปีอายุขัย (${formData.lifeExpectancy}) คือ ฿${format(summary.totalEndOfLife, true)}.
+          เป้าหมายมรดกคือ ฿${format(formData.desiredInheritance, true)}.
+          ${summary.totalEndOfLife >= formData.desiredInheritance
+            ? " (บรรลุเป้าหมายมรดก)"
+            : " (ไม่บรรลุเป้าหมายมรดก กรุณาปรับแผน)"
+          }
+        </p>
+      `;
+      
+      // Summary Table
+      const i = formData.inflationRate / 100;
+      const savingsAtRetirementStart2 = cashFlow.find(r => r.age === formData.retirementAge - 1)?.savings ?? 0;
+      const annualSpendingAtRetirement = formData.desiredMonthlySpending * 12 * Math.pow(1 + i, formData.retirementAge - formData.currentAge);
+      const monthlySpendingAtRetirement = annualSpendingAtRetirement / 12;
+      const annualSpendingAtEnd = formData.desiredMonthlySpending * 12 * Math.pow(1 + i, formData.lifeExpectancy - formData.currentAge);
+      const monthlySpendingAtEnd = annualSpendingAtEnd / 12;
+      
+      const summaryTableElement = document.getElementById('summary-table');
+      summaryTableElement.innerHTML = `
+        <h2 class="text-xl md:text-2xl font-bold mb-5 text-white">สรุปภาพรวมแผนเกษียณ</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm md:text-base text-left text-white">
+            <thead class="bg-white/20">
+              <tr class="font-semibold">
+                <th class="py-2.5 px-4">หัวข้อ</th>
+                <th class="py-2.5 px-4 text-center">ช่วงออม<br/>(อายุ ${formData.currentAge} - ${formData.retirementAge -1})</th>
+                <th class="py-2.5 px-4 text-center">ช่วงใช้เงิน<br/>(อายุ ${formData.retirementAge} - ${formData.lifeExpectancy})</th>
+                <th class="py-2.5 px-4 text-center">ณ สิ้นสุดแผน<br/>(อายุ ${formData.lifeExpectancy})</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-white/30">
+                <td class="py-2.5 px-4">จำนวนปี</td>
+                <td class="py-2.5 px-4 text-center">${formData.retirementAge - formData.currentAge} ปี</td>
+                <td class="py-2.5 px-4 text-center">${formData.lifeExpectancy - formData.retirementAge + 1} ปี</td>
+                <td class="py-2.5 px-4 text-center">–</td>
+              </tr>
+              <tr class="border-t border-white/30">
+                <td class="py-2.5 px-4">เงินเก็บ (ณ สิ้นช่วงเวลา)</td>
+                <td class="py-2.5 px-4 text-center">฿${format(savingsAtRetirementStart2, true)}<br/><small>(ณ สิ้นปีอายุ ${formData.retirementAge - 1})</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(summary.totalEndOfLife, true)}<br/><small>(ณ สิ้นปีอายุ ${formData.lifeExpectancy})</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(formData.desiredInheritance, true)}<br/><small>(เป้าหมายมรดก)</small></td>
+              </tr>
+              <tr class="border-t border-white/30">
+                <td class="py-2.5 px-4">ค่าใช้จ่ายต่อปี<br/><small>(มูลค่า ณ ปีแรกของช่วง)</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(formData.desiredMonthlySpending * 12)}<br/><small>(มูลค่าปัจจุบัน)</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(annualSpendingAtRetirement, true)}<br/><small>(ณ ปีอายุ ${formData.retirementAge})</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(annualSpendingAtEnd, true)}<br/><small>(ณ ปีอายุ ${formData.lifeExpectancy})</small></td>
+              </tr>
+              <tr class="border-t border-white/30">
+                <td class="py-2.5 px-4">ค่าใช้จ่ายรายเดือน<br/><small>(มูลค่า ณ ปีแรกของช่วง)</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(formData.desiredMonthlySpending)}<br/><small>(มูลค่าปัจจุบัน)</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(monthlySpendingAtRetirement, true)}<br/><small>(ณ ปีอายุ ${formData.retirementAge})</small></td>
+                <td class="py-2.5 px-4 text-center">฿${format(monthlySpendingAtEnd, true)}<br/><small>(ณ ปีอายุ ${formData.lifeExpectancy})</small></td>
+              </tr>
+              <tr class="border-t border-white/30">
+                <td class="py-2.5 px-4">ผลตอบแทนเฉลี่ยคาดการณ์</td>
+                <td class="py-2.5 px-4 text-center">${formData.expectedReturnBefore}%</td>
+                <td class="py-2.5 px-4 text-center">${formData.expectedReturnAfter}%</td>
+                <td class="py-2.5 px-4 text-center">–</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      // Display Chart (using Chart.js)
+      renderChart();
+      
+      // Cash Flow Table
+      const cashFlowTableElement = document.getElementById('cash-flow-table');
+      let tableHTML = `
+        <table class="w-full border-collapse text-sm md:text-base">
+          <thead class="bg-[#b2e0da] sticky top-0 z-10 shadow-sm">
+            <tr>
+              <th class="border px-4 py-2.5 text-center">ปี พ.ศ.</th>
+              <th class="border px-4 py-2.5 text-center">อายุ</th>
+              <th class="border px-4 py-2.5 text-right">เงินออมเพิ่ม<br/>(ทั้งปี)</th>
+              <th class="border px-4 py-2.5 text-right">ผลตอบแทน<br/>(ดอกเบี้ย/กำไร)</th>
+              <th class="border px-4 py-2.5 text-right">เงินที่ใช้จ่าย<br/>(ทั้งปี)</th>
+              <th class="border px-4 py-2.5 text-right">ยอดเงินสะสม<br/>(ณ สิ้นปี)</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      // Filter to get cashflow for current age and later
+      const filteredCashFlow = cashFlow.filter(row => row.age >= formData.currentAge);
+      
+      filteredCashFlow.forEach((row, idx) => {
+        tableHTML += `
+          <tr class="${row.isRetired ? "bg-yellow-50" : "bg-white"} hover:bg-gray-100 transition-colors duration-150">
+            <td class="border px-4 py-2 text-center">${row.year}</td>
+            <td class="border px-4 py-2 
