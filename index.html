@@ -1,136 +1,129 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>เครื่องมือวางแผนเกษียณ</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts/umd/Recharts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6/babel.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 font-sans">
-  <div class="max-w-5xl mx-auto py-10 px-6">
-    <h1 class="text-3xl md:text-4xl font-extrabold text-center text-[#005f56] mb-5">เครื่องมือวางแผนเกษียณ</h1>
-    <p class="text-center text-gray-600 mb-10 text-base md:text-lg">ประเมินเงินออมของคุณเพื่อวัยเกษียณอย่างละเอียด</p>
+  <div id="root" class="min-h-screen"></div>
 
-    <div class="bg-white border p-6 md:p-8 rounded-lg shadow-md mb-10">
-      <h2 class="text-xl md:text-2xl font-semibold text-[#00928b] mb-6">ข้อมูลของคุณ</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="input-fields">
-        <!-- ช่องกรอกข้อมูลจะถูกเติมด้วย JS -->
-      </div>
+  <!-- Embed the React App using Babel -->
+  <script type="text/babel">
+    const { useState } = React;
+    const {
+      BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer
+    } = Recharts;
 
-      <div id="error" class="hidden mt-5 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-center text-sm md:text-base"></div>
-
-      <button id="calculateBtn" class="mt-8 w-full bg-[#005f56] text-white py-3.5 px-5 rounded-lg hover:bg-[#004843] transition duration-200 text-lg md:text-xl font-semibold shadow hover:shadow-md">
-        คำนวณแผนเกษียณ
-      </button>
-    </div>
-
-    <div id="results" class="hidden">
-      <!-- สรุปผล, ตาราง, และกราฟจะแสดงที่นี่ด้วย JS -->
-    </div>
-  </div>
-
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const inputFields = [
-        { id: "currentAge", label: "อายุปัจจุบัน", unit: "ปี" },
-        { id: "retirementAge", label: "อายุเกษียณ", unit: "ปี" },
-        { id: "lifeExpectancy", label: "คาดว่าจะมีชีวิตถึงอายุ", unit: "ปี" },
-        { id: "currentSavings", label: "เงินออมปัจจุบัน", unit: "บาท" },
-        { id: "monthlySaving", label: "เงินออมรายเดือน", unit: "บาท" },
-        { id: "expectedExpense", label: "ค่าใช้จ่ายรายเดือนหลังเกษียณ", unit: "บาท" },
-      ];
-
-      const inputContainer = document.getElementById("input-fields");
-      inputFields.forEach(field => {
-        const wrapper = document.createElement("div");
-        wrapper.innerHTML = `
-          <label for="${field.id}" class="block font-medium text-gray-700 mb-1">${field.label}</label>
-          <input type="number" id="${field.id}" class="w-full p-2 border border-gray-300 rounded-md" placeholder="${field.unit}">
-        `;
-        inputContainer.appendChild(wrapper);
+    const App = () => {
+      const [form, setForm] = useState({
+        currentAge: '',
+        retirementAge: '',
+        lifeExpectancy: '',
+        currentSavings: '',
+        monthlySaving: '',
+        expectedExpense: ''
       });
+      const [result, setResult] = useState(null);
 
-      document.getElementById("calculateBtn").addEventListener("click", () => {
-        const values = {};
-        let hasError = false;
+      const handleChange = (e) => {
+        setForm({ ...form, [e.target.name]: e.target.value });
+      };
 
-        inputFields.forEach(field => {
-          const val = parseFloat(document.getElementById(field.id).value);
-          if (isNaN(val) || val < 0) {
-            hasError = true;
-          }
-          values[field.id] = val;
-        });
+      const handleCalculate = () => {
+        const {
+          currentAge,
+          retirementAge,
+          lifeExpectancy,
+          currentSavings,
+          monthlySaving,
+          expectedExpense
+        } = form;
 
-        const errorEl = document.getElementById("error");
-        if (hasError) {
-          errorEl.textContent = "กรุณากรอกข้อมูลให้ครบและถูกต้องทุกช่อง";
-          errorEl.classList.remove("hidden");
-          return;
-        } else {
-          errorEl.classList.add("hidden");
-        }
+        const yearsToSave = retirementAge - currentAge;
+        const yearsAfterRetire = lifeExpectancy - retirementAge;
 
-        const yearsToSave = values.retirementAge - values.currentAge;
-        const yearsAfterRetire = values.lifeExpectancy - values.retirementAge;
+        const totalSaving = parseFloat(currentSavings) + (parseFloat(monthlySaving) * 12 * yearsToSave);
+        const totalNeed = parseFloat(expectedExpense) * 12 * yearsAfterRetire;
 
-        const totalSaving = values.currentSavings + (values.monthlySaving * 12 * yearsToSave);
-        const totalNeed = values.expectedExpense * 12 * yearsAfterRetire;
-        const diff = totalSaving - totalNeed;
+        setResult({ totalSaving, totalNeed });
+      };
 
-        const resultsEl = document.getElementById("results");
-        resultsEl.innerHTML = `
-          <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-            <h3 class="text-xl font-semibold text-[#005f56] mb-4">สรุปผล</h3>
-            <ul class="space-y-2 text-gray-700">
-              <li>💰 เงินออมทั้งหมดเมื่ออายุ ${values.retirementAge} ปี: <strong>${totalSaving.toLocaleString()} บาท</strong></li>
-              <li>🧾 ค่าใช้จ่ายที่ต้องใช้ตั้งแต่อายุ ${values.retirementAge} ถึง ${values.lifeExpectancy} ปี: <strong>${totalNeed.toLocaleString()} บาท</strong></li>
-              <li>📊 ความเพียงพอของเงินออม: <strong class="${diff >= 0 ? 'text-green-600' : 'text-red-600'}">${diff >= 0 ? 'เพียงพอ' : 'ไม่เพียงพอ'}</strong></li>
-            </ul>
-            <canvas id="summaryChart" class="mt-6"></canvas>
+      return (
+        <div className="max-w-5xl mx-auto py-10 px-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-center text-[#005f56] mb-5">
+            เครื่องมือวางแผนเกษียณ
+          </h1>
+          <p className="text-center text-gray-600 mb-10 text-base md:text-lg">
+            ประเมินเงินออมของคุณเพื่อวัยเกษียณอย่างละเอียด
+          </p>
+
+          <div className="bg-white border p-6 md:p-8 rounded-lg shadow-md mb-10">
+            <h2 className="text-xl md:text-2xl font-semibold text-[#00928b] mb-6">ข้อมูลของคุณ</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { name: 'currentAge', label: 'อายุปัจจุบัน', unit: 'ปี' },
+                { name: 'retirementAge', label: 'อายุเกษียณ', unit: 'ปี' },
+                { name: 'lifeExpectancy', label: 'คาดว่าจะมีชีวิตถึงอายุ', unit: 'ปี' },
+                { name: 'currentSavings', label: 'เงินออมปัจจุบัน', unit: 'บาท' },
+                { name: 'monthlySaving', label: 'เงินออมรายเดือน', unit: 'บาท' },
+                { name: 'expectedExpense', label: 'ค่าใช้จ่ายรายเดือนหลังเกษียณ', unit: 'บาท' }
+              ].map(({ name, label, unit }) => (
+                <div key={name}>
+                  <label htmlFor={name} className="block font-medium text-gray-700 mb-1">{label}</label>
+                  <input
+                    type="number"
+                    id={name}
+                    name={name}
+                    value={form[name]}
+                    onChange={handleChange}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                    placeholder={unit}
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={handleCalculate}
+              className="mt-8 w-full bg-[#005f56] text-white py-3.5 px-5 rounded-lg hover:bg-[#004843] transition duration-200 text-lg md:text-xl font-semibold shadow hover:shadow-md"
+            >
+              คำนวณแผนเกษียณ
+            </button>
           </div>
-        `;
-        resultsEl.classList.remove("hidden");
 
-        renderChart(totalSaving, totalNeed);
-      });
+          {result && (
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-xl font-semibold text-[#005f56] mb-4">สรุปผล</h3>
+              <ul className="space-y-2 text-gray-700">
+                <li>💰 เงินออมทั้งหมดเมื่อเกษียณ: <strong>{result.totalSaving.toLocaleString()} บาท</strong></li>
+                <li>🧾 เงินที่ต้องใช้หลังเกษียณ: <strong>{result.totalNeed.toLocaleString()} บาท</strong></li>
+                <li>📊 ความเพียงพอ: <strong className={result.totalSaving >= result.totalNeed ? 'text-green-600' : 'text-red-600'}>{result.totalSaving >= result.totalNeed ? 'เพียงพอ' : 'ไม่เพียงพอ'}</strong></li>
+              </ul>
+              <div className="w-full h-64 mt-6">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: 'เงินออม', value: result.totalSaving },
+                    { name: 'ต้องใช้', value: result.totalNeed }
+                  ]}>
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(val) => val.toLocaleString()} />
+                    <Tooltip formatter={(val) => val.toLocaleString() + ' บาท'} />
+                    <Bar dataKey="value" fill="#10b981" radius={[10, 10, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
 
-      function renderChart(saved, needed) {
-        const ctx = document.getElementById("summaryChart").getContext("2d");
-        new Chart(ctx, {
-          type: "bar",
-          data: {
-            labels: ["เงินออมเมื่อเกษียณ", "เงินที่ต้องใช้หลังเกษียณ"],
-            datasets: [{
-              label: "จำนวนเงิน (บาท)",
-              data: [saved, needed],
-              backgroundColor: ["#10b981", "#f87171"],
-              borderRadius: 10,
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} บาท`
-                }
-              }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                ticks: {
-                  callback: (value) => `${value.toLocaleString()}`
-                }
-              }
-            }
-          }
-        });
-      }
-    });
+    ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
 </html>
