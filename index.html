@@ -13,8 +13,10 @@
   <!-- ใช้ CDN ของ Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- ใช้ Chart.js สำหรับการสร้างกราฟ -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- ใช้ CDN ของ Recharts -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
   
   <!-- Custom Tailwind Config -->
   <script>
@@ -35,6 +37,13 @@
       background-color: #f3f4f6;
       margin: 0;
       padding: 0;
+    }
+    /* Custom styles for Recharts */
+    .recharts-default-tooltip {
+      background-color: rgba(255, 255, 255, 0.9) !important;
+      border: 1px solid #ccc !important;
+      border-radius: 5px !important;
+      padding: 8px !important;
     }
   </style>
 </head>
@@ -77,9 +86,7 @@
       <!-- Savings Chart -->
       <div class="mb-10 p-6 md:p-8 rounded-lg bg-[#e0f2f7] shadow-lg">
         <h2 class="text-xl md:text-2xl font-bold mb-5 text-[#005f56]">กราฟแสดงยอดเงินสะสมแต่ละปี (ณ สิ้นปี)</h2>
-        <div style="width: 100%; height: 400px; position: relative;">
-          <canvas id="savingsChart"></canvas>
-        </div>
+        <div id="savings-chart" style="width: 100%; height: 400px;"></div>
       </div>
       
       <!-- Cash Flow Table -->
@@ -462,7 +469,7 @@
         </div>
       `;
       
-      // Display Chart (using Chart.js)
+      // Display Bar Chart with Recharts (we need to create this separately)
       renderChart();
       
       // Cash Flow Table
@@ -489,4 +496,141 @@
         tableHTML += `
           <tr class="${row.isRetired ? "bg-yellow-50" : "bg-white"} hover:bg-gray-100 transition-colors duration-150">
             <td class="border px-4 py-2 text-center">${row.year}</td>
-            <td class="border px-4 py-2 
+            <td class="border px-4 py-2 text-center">${row.age}</td>
+            <td class="border px-4 py-2 text-right text-green-700">${row.contribute > 0 ? `+${format(row.contribute, true)}` : '–'}</td>
+            <td class="border px-4 py-2 text-right text-blue-700">${row.interest !== 0 ? format(row.interest, true) : '–'}</td>
+            <td class="border px-4 py-2 text-right text-orange-700">${row.spending > 0 ? `-${format(row.spending, true)}` : '–'}</td>
+            <td class="border px-4 py-2 text-right font-semibold ${row.savings < 0 ? 'text-red-600' : 'text-black'}">${format(row.savings, true)}</td>
+          </tr>
+        `;
+      });
+      
+      tableHTML += `
+          </tbody>
+        </table>
+      `;
+      
+      cashFlowTableElement.innerHTML = tableHTML;
+      
+      // Cash Flow Notes
+      const cashFlowNotesElement = document.getElementById('cash-flow-notes');
+      cashFlowNotesElement.innerHTML = `
+        * หมายเหตุ: ตารางแสดงยอดเงินสะสม ณ <span class="underline font-semibold">สิ้นปีปฏิทิน</span> ของแต่ละช่วงอายุ.<br />
+        * การคำนวณสมมุติว่า: ออมเงิน/ลงทุน <span class="underline">ต้นปี</span>, ได้รับผลตอบแทน <span class="underline">สิ้นปี</span>, และใช้จ่ายเงิน <span class="underline">สิ้นปี</span>.<br/>
+        * หากยอดเงินสะสม ณ สิ้นปีอายุขัย (${formData.lifeExpectancy}) <span class="${summary.totalEndOfLife >= formData.desiredInheritance ? 'text-green-700 font-semibold' : 'text-red-600 font-semibold'}">
+          ${summary.totalEndOfLife >= formData.desiredInheritance ? `มากกว่าหรือเท่ากับ` : `น้อยกว่า`} ฿${format(formData.desiredInheritance, true)}
+        </span>,
+        ${summary.totalEndOfLife >= formData.desiredInheritance
+          ? " แสดงว่าบรรลุเป้าหมายมรดกที่ตั้งไว้."
+          : " แสดงว่าเงินอาจไม่พอสำหรับเป้าหมายมรดก หรืออาจหมดก่อนอายุขัย."
+        }
+        <br/>
+        * ระบบนี้คำนวณโดยสมมุติว่า <span class="underline">มีชีวิตอยู่จนถึงสิ้นปีของอายุ ${formData.lifeExpectancy}</span>.
+      `;
+    }
+    
+    // Render Chart using Chart.js
+    function renderChart() {
+      // Filter data for chart
+      const filteredData = cashFlow.filter(r => r.age >= formData.currentAge - 1);
+      
+      // Prepare data for Chart.js
+      const chartData = {
+        labels: filteredData.map(r => `อายุ ${r.age}`),
+        datasets: [{
+          label: 'ยอดเงินสะสม (สิ้นปี)',
+          data: filteredData.map(r => r.savings),
+          backgroundColor: '#00928b',
+          barPercentage: 0.7,
+          borderRadius: {
+            topLeft: 4,
+            topRight: 4,
+            bottomLeft: 0,
+            bottomRight: 0
+          }
+        }]
+      };
+      
+      // Get canvas element
+      const ctx = document.getElementById('savingsChart').getContext('2d');
+      
+      // Destroy previous chart if exists
+      if (window.myChart) {
+        window.myChart.destroy();
+      }
+      
+      // Create new chart
+      window.myChart = new Chart(ctx, {
+        type: 'bar',
+        data: chartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function(value) {
+                  return '฿' + (value / 1000000).toFixed(1) + 'M';
+                }
+              },
+              title: {
+                display: true,
+                text: 'เงินสะสม (ล้านบาท)',
+                font: {
+                  family: 'Sarabun',
+                  size: 12
+                },
+                color: '#666'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'อายุ (ปี)',
+                font: {
+                  family: 'Sarabun',
+                  size: 12
+                },
+                color: '#666'
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `ยอดเงินสะสม: ฿${format(context.raw, true)}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+    
+    // Initialize the app
+    function initApp() {
+      // Generate input fields
+      generateInputFields();
+      
+      // Add event listener to calculate button
+      document.getElementById('calculate-button').addEventListener('click', function() {
+        if (validateInputs()) {
+          calculateRetirement();
+          displayResults();
+          
+          // Scroll to results
+          document.getElementById('result-summary').scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      });
+    }
+    
+    // Start the app when page is loaded
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>    
