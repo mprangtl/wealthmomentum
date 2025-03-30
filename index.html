@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>เครื่องมือวางแผนเกษียณ</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script defer src="script.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 font-sans">
@@ -31,112 +30,107 @@
     </div>
   </div>
 
-  <!-- สคริปต์ JS แยกต่างหากเพื่อให้แก้ไขง่าย -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const inputFields = [
+        { id: "currentAge", label: "อายุปัจจุบัน", unit: "ปี" },
+        { id: "retirementAge", label: "อายุเกษียณ", unit: "ปี" },
+        { id: "lifeExpectancy", label: "คาดว่าจะมีชีวิตถึงอายุ", unit: "ปี" },
+        { id: "currentSavings", label: "เงินออมปัจจุบัน", unit: "บาท" },
+        { id: "monthlySaving", label: "เงินออมรายเดือน", unit: "บาท" },
+        { id: "expectedExpense", label: "ค่าใช้จ่ายรายเดือนหลังเกษียณ", unit: "บาท" },
+      ];
+
+      const inputContainer = document.getElementById("input-fields");
+      inputFields.forEach(field => {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = `
+          <label for="${field.id}" class="block font-medium text-gray-700 mb-1">${field.label}</label>
+          <input type="number" id="${field.id}" class="w-full p-2 border border-gray-300 rounded-md" placeholder="${field.unit}">
+        `;
+        inputContainer.appendChild(wrapper);
+      });
+
+      document.getElementById("calculateBtn").addEventListener("click", () => {
+        const values = {};
+        let hasError = false;
+
+        inputFields.forEach(field => {
+          const val = parseFloat(document.getElementById(field.id).value);
+          if (isNaN(val) || val < 0) {
+            hasError = true;
+          }
+          values[field.id] = val;
+        });
+
+        const errorEl = document.getElementById("error");
+        if (hasError) {
+          errorEl.textContent = "กรุณากรอกข้อมูลให้ครบและถูกต้องทุกช่อง";
+          errorEl.classList.remove("hidden");
+          return;
+        } else {
+          errorEl.classList.add("hidden");
+        }
+
+        const yearsToSave = values.retirementAge - values.currentAge;
+        const yearsAfterRetire = values.lifeExpectancy - values.retirementAge;
+
+        const totalSaving = values.currentSavings + (values.monthlySaving * 12 * yearsToSave);
+        const totalNeed = values.expectedExpense * 12 * yearsAfterRetire;
+        const diff = totalSaving - totalNeed;
+
+        const resultsEl = document.getElementById("results");
+        resultsEl.innerHTML = `
+          <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <h3 class="text-xl font-semibold text-[#005f56] mb-4">สรุปผล</h3>
+            <ul class="space-y-2 text-gray-700">
+              <li>💰 เงินออมทั้งหมดเมื่ออายุ ${values.retirementAge} ปี: <strong>${totalSaving.toLocaleString()} บาท</strong></li>
+              <li>🧾 ค่าใช้จ่ายที่ต้องใช้ตั้งแต่อายุ ${values.retirementAge} ถึง ${values.lifeExpectancy} ปี: <strong>${totalNeed.toLocaleString()} บาท</strong></li>
+              <li>📊 ความเพียงพอของเงินออม: <strong class="${diff >= 0 ? 'text-green-600' : 'text-red-600'}">${diff >= 0 ? 'เพียงพอ' : 'ไม่เพียงพอ'}</strong></li>
+            </ul>
+            <canvas id="summaryChart" class="mt-6"></canvas>
+          </div>
+        `;
+        resultsEl.classList.remove("hidden");
+
+        renderChart(totalSaving, totalNeed);
+      });
+
+      function renderChart(saved, needed) {
+        const ctx = document.getElementById("summaryChart").getContext("2d");
+        new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: ["เงินออมเมื่อเกษียณ", "เงินที่ต้องใช้หลังเกษียณ"],
+            datasets: [{
+              label: "จำนวนเงิน (บาท)",
+              data: [saved, needed],
+              backgroundColor: ["#10b981", "#f87171"],
+              borderRadius: 10,
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} บาท`
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => `${value.toLocaleString()}`
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  </script>
 </body>
 </html>
-
-
-
-
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const inputFields = [
-    { id: "currentAge", label: "อายุปัจจุบัน", unit: "ปี" },
-    { id: "retirementAge", label: "อายุเกษียณ", unit: "ปี" },
-    { id: "lifeExpectancy", label: "คาดว่าจะมีชีวิตถึงอายุ", unit: "ปี" },
-    { id: "currentSavings", label: "เงินออมปัจจุบัน", unit: "บาท" },
-    { id: "monthlySaving", label: "เงินออมรายเดือน", unit: "บาท" },
-    { id: "expectedExpense", label: "ค่าใช้จ่ายรายเดือนหลังเกษียณ", unit: "บาท" },
-  ];
-
-  const inputContainer = document.getElementById("input-fields");
-  inputFields.forEach(field => {
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = `
-      <label for="${field.id}" class="block font-medium text-gray-700 mb-1">${field.label}</label>
-      <input type="number" id="${field.id}" class="w-full p-2 border border-gray-300 rounded-md" placeholder="${field.unit}">
-    `;
-    inputContainer.appendChild(wrapper);
-  });
-
-  document.getElementById("calculateBtn").addEventListener("click", () => {
-    const values = {};
-    let hasError = false;
-
-    inputFields.forEach(field => {
-      const val = parseFloat(document.getElementById(field.id).value);
-      if (isNaN(val) || val < 0) {
-        hasError = true;
-      }
-      values[field.id] = val;
-    });
-
-    const errorEl = document.getElementById("error");
-    if (hasError) {
-      errorEl.textContent = "กรุณากรอกข้อมูลให้ครบและถูกต้องทุกช่อง";
-      errorEl.classList.remove("hidden");
-      return;
-    } else {
-      errorEl.classList.add("hidden");
-    }
-
-    const yearsToSave = values.retirementAge - values.currentAge;
-    const yearsAfterRetire = values.lifeExpectancy - values.retirementAge;
-
-    const totalSaving = values.currentSavings + (values.monthlySaving * 12 * yearsToSave);
-    const totalNeed = values.expectedExpense * 12 * yearsAfterRetire;
-    const diff = totalSaving - totalNeed;
-
-    const resultsEl = document.getElementById("results");
-    resultsEl.innerHTML = `
-      <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h3 class="text-xl font-semibold text-[#005f56] mb-4">สรุปผล</h3>
-        <ul class="space-y-2 text-gray-700">
-          <li>💰 เงินออมทั้งหมดเมื่ออายุ ${values.retirementAge} ปี: <strong>${totalSaving.toLocaleString()} บาท</strong></li>
-          <li>🧾 ค่าใช้จ่ายที่ต้องใช้ตั้งแต่อายุ ${values.retirementAge} ถึง ${values.lifeExpectancy} ปี: <strong>${totalNeed.toLocaleString()} บาท</strong></li>
-          <li>📊 ความเพียงพอของเงินออม: <strong class="${diff >= 0 ? 'text-green-600' : 'text-red-600'}">${diff >= 0 ? 'เพียงพอ' : 'ไม่เพียงพอ'}</strong></li>
-        </ul>
-        <canvas id="summaryChart" class="mt-6"></canvas>
-      </div>
-    `;
-    resultsEl.classList.remove("hidden");
-
-    renderChart(totalSaving, totalNeed);
-  });
-
-  function renderChart(saved, needed) {
-    const ctx = document.getElementById("summaryChart").getContext("2d");
-    new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: ["เงินออมเมื่อเกษียณ", "เงินที่ต้องใช้หลังเกษียณ"],
-        datasets: [{
-          label: "จำนวนเงิน (บาท)",
-          data: [saved, needed],
-          backgroundColor: ["#10b981", "#f87171"],
-          borderRadius: 10,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} บาท`
-            }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: (value) => `${value.toLocaleString()}`
-            }
-          }
-        }
-      }
-    });
-  }
-});
-</script>
